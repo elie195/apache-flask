@@ -1,20 +1,19 @@
-# Debian - Python - Mod_Wsgi
+# API server for "Nagios Slash command" app in Slack
 
-This is the repo for running a python app under `mod_wsgi` on apache in a docker container
+You can use this Docker image to host the server needed for the "Nagios Slash Command" app in Slack
 
-Many of the docker repo's out there use flask local server in their images.
-This repo is for a more production ready environment.
+Requirements: 
+- nagiosapi (runs on your Nagios server)
+- Connectivity from this Docker container to nagiosapi
+- Publicly accessible from internet with valid certificate (setup any NAT required for Slack to be able to reach this server)
 
-This repo will be built in stages
-It will contain a demo app written using the Flask framework
 
-I will be using [this Flask app](http://code.tutsplus.com/tutorials/an-introduction-to-pythons-flask-framework--net-28822) for the repo
+*Be sure to create your own config.ini file from the provided config.ini.example file*
 
-As of [commit f232e60c39fcd480fbabab6308eeaf24f4a9d5ae](https://github.com/Craicerjack/apache-flask/tree/f232e60c39fcd480fbabab6308eeaf24f4a9d5ae)
+The Docker image runs Flask via Apache WSGI
+
 The command to run the `Dockerfile` is:
 
 `docker run -d -p 80:80 --name <name> apache-flask`
 
-
-a2dissite 000-default.conf
-a2ensite apache-flask.conf
+Slack requires HTTPS, so you can stick a load balancer in front of this server for SSL termination

@@ -1,0 +1,7 @@
+# Get this token from the "Slash command" application you defined in Slack
+[Slack]
+slack_token = 
+
+# This is the endpoint of nagiosapi running on your Nagios server
+[Nagios]
+url = http://nagios.example.com:6315/schedule_downtime

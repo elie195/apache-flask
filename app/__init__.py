@@ -9,8 +9,14 @@ app = Flask(__name__)
 
 slack_token = config.get('Slack', 'slack_token')
 url = config.get('Nagios', 'url')
+auth_channels = json.loads(config.get('Slack','channels'))
+print auth_channels
 
 headers = {'Content-Type': 'application/json'}
+
+class Nagios():
+    commands = ['acknowledge_problem', 'add_comment', 'cancel_downtime', 'disable_notifications', 'delete_comment', 'enable_notifications', 'log', 'status', 'restart_nagios', 'objects', 'remove_acknowledgement', 'schedule_check', 'schedule_downtime', 'schedule_hostgroup_downtime', 'state', 'submit_result']
+    auth_commands = json.loads(config.get('Nagios','auth_commands'))
 
 def postToNagios(user, host, duration, comment):
     if user:
@@ -64,31 +70,35 @@ def createJSONResponse(text, description):
 @app.route("/api", methods = ['GET'])
 def apicall():
     if request.args.get('token') == slack_token:
-        user_name = request.args.get('user_name')
-        text = request.args.get('text')
-        if ' ' in text:
-            parts = text.split(' ', 2)
-            parts += [None] * (3 - len(parts)) # Assume we can have max. 3 items. Fill in missing entries with None.
-            host,duration,comment = parts
-            if duration == None:
-                duration = 120
-            if comment == None:
-                comment = 'Sent from Slack'
-        else:
-            host,duration,comment = text,120,'Sent from Slack'
-        extendedDuration = parseDuration(str(duration))
-        if extendedDuration != None:
-            result = postToNagios(user_name, host, extendedDuration, comment)
-            if result == 'success':
-                newDuration = humanReadableDate(relativedelta(seconds=extendedDuration))
-                json_resp = createJSONResponse("Success!","Successfully set a downtime of %s for %s" % (" ".join(newDuration), host))
-                resp = Response(json_resp)
-                resp.headers['Content-Type'] = 'application/json'
-                return resp
+        channel = request.args.get('channel_name')
+        if channel in auth_channels:
+            user_name = request.args.get('user_name')
+            text = request.args.get('text')
+            if ' ' in text:
+                parts = text.split(' ', 2)
+                parts += [None] * (3 - len(parts)) # Assume we can have max. 3 items. Fill in missing entries with None.
+                host,duration,comment = parts
+                if duration == None:
+                    duration = 120
+                if comment == None:
+                    comment = 'Sent from Slack'
             else:
-                return "Error setting downtime. Details: %s" % result
+                host,duration,comment = text,120,'Sent from Slack'
+            extendedDuration = parseDuration(str(duration))
+            if extendedDuration != None:
+                result = postToNagios(user_name, host, extendedDuration, comment)
+                if result == 'success':
+                    newDuration = humanReadableDate(relativedelta(seconds=extendedDuration))
+                    json_resp = createJSONResponse("Success!","Successfully set a downtime of %s for %s" % (" ".join(newDuration), host))
+                    resp = Response(json_resp)
+                    resp.headers['Content-Type'] = 'application/json'
+                    return resp
+                else:
+                    return "Error setting downtime. Details: %s" % result
+            else:
+                return "Error: Unsupported time modifier. Use 'm' for minutes, 'h' for hours, 'd' for days."
         else:
-            return "Error: Unsupported time modifier. Use 'm' for minutes, 'h' for hours, 'd' for days."
+            return "Error: Unauthorized channel"
 
     #For monitoring purposes
     elif request.args.get('ping') == "statuscake":
@@ -96,4 +106,3 @@ def apicall():
     else:
         #This happens when the token doesn't match what's configured in Slack (probably malicious)
         abort(401)
-

@@ -1,6 +1,6 @@
 # Get this token from the "Slash command" application you defined in Slack
 [Slack]
-slack_token = 
+slack_token = XXXXXXXXXXXXXXXXXXXXXXXX
 channels = ["nagios", "ops"]
 
 # This is the endpoint of nagiosapi running on your Nagios server

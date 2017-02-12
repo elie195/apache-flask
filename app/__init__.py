@@ -1,6 +1,6 @@
 from flask import Flask, json, request, Response, abort
 import re, ConfigParser
-import requests, json
+import requests, json, collections
 from dateutil.relativedelta import relativedelta
 
 config = ConfigParser.ConfigParser()
@@ -8,15 +8,11 @@ config.read('/var/www/apache-flask/app/config.ini')
 app = Flask(__name__)
 
 slack_token = config.get('Slack', 'slack_token')
+test_token = config.get('Testing', 'slack_token') #For testing
 url = config.get('Nagios', 'url')
 auth_channels = json.loads(config.get('Slack','channels'))
-print auth_channels
 
 headers = {'Content-Type': 'application/json'}
-
-class Nagios():
-    commands = ['acknowledge_problem', 'add_comment', 'cancel_downtime', 'disable_notifications', 'delete_comment', 'enable_notifications', 'log', 'status', 'restart_nagios', 'objects', 'remove_acknowledgement', 'schedule_check', 'schedule_downtime', 'schedule_hostgroup_downtime', 'state', 'submit_result']
-    auth_commands = json.loads(config.get('Nagios','auth_commands'))
 
 def postToNagios(user, host, duration, comment):
     if user:
@@ -67,6 +63,73 @@ def createJSONResponse(text, description):
     json_resp = {"response_type": "in_channel","text": text,"attachments": [{"text": description}]}
     return json.dumps(json_resp)
 
+
+
+# The following section is experimental. Proceed with caution
+
+class Nagios():
+    commands = ['acknowledge_problem', 'add_comment', 'cancel_downtime', 'disable_notifications', 'delete_comment', 'enable_notifications', 'log', 'status', 'restart_nagios', 'objects', 'remove_acknowledgement', 'schedule_check', 'schedule_downtime', 'schedule_hostgroup_downtime', 'state', 'submit_result']
+    auth_commands = json.loads(config.get('Nagios','auth_commands'))
+
+    help_dict = {}
+    help_dict['schedule_downtime'] = { "host": "required,string","duration": "required,seconds","service": "optional,string","services_too": "optional,bool","comment": "optional,string" }
+
+def show_help(desired_command):
+    commands = Nagios().help_dict[desired_command]
+    print commands
+    returnString = ''
+    #sorted_commands = collections.OrderedDict(sorted(commands.items()))
+    for k in sorted(commands, key=commands.get, reverse=True):
+        if commands[k].split(',')[0] == 'required':
+            returnString = returnString + "Parameter: %-*s Type: %-*s %s\n" % (20,k,10, commands[k].split(',')[1], commands[k].split(',')[0])
+        elif commands[k].split(',')[0] == 'optional':
+            returnString = returnString + "Parameter: %-*s Type: %-*s (%s)\n" % (20,k,10, commands[k].split(',')[1], commands[k].split(',')[0])
+    return returnString
+
+# The following endpoint can accept many different commands
+# The commands must be defined in your config.ini file in order to be allowed
+#
+# The following commands are currently available:
+#   - schedule_downtime
+#
+# Syntax to invoke API from Slack:
+#   /api <command> <param1=value> <param2=value>
+#
+# Most commands require at least one argument (param key/value pair)
+# To list the available arguments for a given command,
+# Run the command with no arguments
+
+@app.route("/nagios", methods = ['POST'])
+def nagiosapicall():
+    token = request.form["token"]
+    if token == test_token:
+        text = request.form["text"]
+        if ' ' in text:
+            desired_command = text.split(' ')[0]
+            if desired_command in Nagios().auth_commands:
+                if desired_command in Nagios.commands:
+                    host = text.split(' ', 2)[1]
+                    args = text.split(' ', 2)[2]
+                    try:
+                        arg_dict = dict(item.split("=") for item in args.split(" "))
+                        return "Host: " + host + " " + str(arg_dict)
+                    except:
+                        return "Error: bad syntax. Use /api <command> <param1=value> <param2=value>"
+            else:
+                return "Unauthorized command. Details: command not authorized in config file"
+        else:
+            #Help triggered
+            desired_command = text
+            if desired_command in Nagios().auth_commands:
+                if desired_command in Nagios().commands:
+                    return show_help(desired_command)
+            else:
+                return "Unauthorized command. Details: command not authorized in config file"
+    else:
+        abort(401)
+
+# End experimental section
+
 @app.route("/api", methods = ['GET'])
 def apicall():
     if request.args.get('token') == slack_token:
@@ -75,7 +138,7 @@ def apicall():
             user_name = request.args.get('user_name')
             text = request.args.get('text')
             if ' ' in text:
-                parts = text.split(' ', 2)
+                parts = text.split(' ', 2) #As long as the comment is the last arg, spaces are parsed just fine
                 parts += [None] * (3 - len(parts)) # Assume we can have max. 3 items. Fill in missing entries with None.
                 host,duration,comment = parts
                 if duration == None:
